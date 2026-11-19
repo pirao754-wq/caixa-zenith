@@ -95,7 +95,7 @@ body.show-ticket .ticket{display:flex;position:fixed;inset:0;z-index:50;border-r
   nav{top:0;bottom:0;right:auto;width:86px;flex-direction:column;padding-top:76px;border-top:0;border-right:1px solid var(--line)}
   nav button{flex:none;padding:13px 0}
   .pdv{grid-template-columns:1fr 380px}
-  .ticket{display:flex;position:sticky;top:76px;max-height:calc(100vh - 92px)}
+  .ticket,body.show-ticket .ticket{display:flex;position:sticky;inset:auto;top:76px;z-index:auto;max-height:calc(100vh - 92px);border-radius:var(--r);border:1px solid var(--line)}
   .tbar,.only-m{display:none!important}
   main{padding:20px 24px 40px}
 }
@@ -272,8 +272,8 @@ const S={
 const VIG=new Set();let versaoVista=null;
 function vigiar(fetch,cb){const s={fetch,cb,last:undefined,busy:false,again:false};VIG.add(s);atualizar(s);return()=>VIG.delete(s)}
 async function atualizar(s){if(s.busy){s.again=true;return}s.busy=true;
-  try{const d=await s.fetch();const j=JSON.stringify(d);if(VIG.has(s)&&j!==s.last){s.last=j;s.cb(d,{fromCache:false})}}
-  catch(e){console.warn(e);if(e&&e.code==='sessao')sessaoInvalida();else if(!st.cfgLoaded){st.loadWarn=true;render()}}
+  try{const d=await s.fetch();if(st.erroDados){st.erroDados=null;render()}const j=JSON.stringify(d);if(VIG.has(s)&&j!==s.last){s.last=j;s.cb(d,{fromCache:false})}}
+  catch(e){console.warn(e);if(e&&e.code==='sessao')sessaoInvalida();else{const m=(e&&e.message)||'erro';if(st.erroDados!==m){st.erroDados=m;render()}}}
   finally{s.busy=false;if(s.again){s.again=false;atualizar(s)}}}
 function atualizarTudo(){gCache=null;VIG.forEach(atualizar)}
 let gravT;function depoisDeGravar(){gCache=null;clearTimeout(gravT);gravT=setTimeout(atualizarTudo,60)}
@@ -385,6 +385,7 @@ function draw(){
   let html='';
   if(!st.cfgLoaded||!st.role){html=`<div class="loading"><img src="${LOGO_SRC}" alt="" style="width:100%;max-width:280px;border-radius:12px;margin-bottom:16px"><div class="spin"></div>Carregando…</div>`}
   else{
+    if(st.erroDados&&st.sessao)html+=`<div class="banner" style="background:#3a1717;color:#fecaca;border-color:#5b2020">⚠ Erro ao buscar dados do servidor: <b>${esc(st.erroDados)}</b></div>`;
     if(st.loadWarn)html+=`<div class="banner">Sem conexão com o servidor. Verifique a internet; o sistema continua tentando.</div>`;
     if(st.erroConfig)html+=`<div class="card empty">⚙️ Falta configurar o Supabase.<br>Abra o arquivo <b>index.html</b> e cole a <b>Project URL</b> e a <b>anon key</b> no topo.</div>`;
     else if(!st.sessao)html+=vLogin();
@@ -550,7 +551,7 @@ async function loadVendas(ini,fim){const cx=await S.getCol('caixas');const rel=c
   const parts=await Promise.all(rel.map(c=>S.getCol('caixas/'+c.id+'/vendas')));const out=[];
   parts.flat().forEach(v=>{if(!v.cancelada&&v.ts>=ini&&v.ts<=fim)out.push(v)});return out}
 async function loadRel(){const[i,f]=periodo(st.rel.periodo);if(i==null){toast('Escolha as duas datas','warn');return}
-  st.rel.carregando=true;render();try{st.rel.dados={i,f,vs:await loadVendas(i,f)}}catch(e){toast('Erro ao carregar o relatório','bad')}st.rel.carregando=false;render()}
+  st.rel.carregando=true;st.rel.erro=null;render();try{st.rel.dados={i,f,vs:await loadVendas(i,f)}}catch(e){console.warn(e);st.rel.erro=(e&&e.message)||'erro';toast('Erro ao carregar o relatório','bad')}st.rel.carregando=false;render()}
 function agg(vs){const r={n:vs.length,total:0,custo:0,semCusto:false,f:{dinheiro:0,pix:0,debito:0,credito:0},prods:{},dias:{},horas:Array(24).fill(0)};
   vs.forEach(v=>{r.total+=v.total;(v.pagamentos||[]).forEach(p=>r.f[p.forma]=(r.f[p.forma]||0)+p.valor);
     const dk=dayKey(v.ts);(r.dias[dk]=r.dias[dk]||{n:0,t:0,ts:v.ts});r.dias[dk].n++;r.dias[dk].t+=v.total;r.horas[new Date(v.ts).getHours()]+=v.total;
@@ -567,7 +568,8 @@ function vRel(){
   <h4 style="margin-top:18px">Ver na tela</h4>`;
   h+=`<div class="chips">${P.map(([k,l])=>`<button class="chip ${st.rel.periodo===k?'on':''}" data-act="periodo" data-v="${k}">${l}</button>`).join('')}</div>`;
   if(st.rel.periodo==='custom')h+=`<div class="toolbar"><input type="date" data-bind="relIni" value="${esc(st.rel.ini)}"><input type="date" data-bind="relFim" value="${esc(st.rel.fim)}"><button class="btn primary" data-act="aplicarCustom">Ver</button></div>`;
-  if(!st.rel.dados&&!st.rel.carregando&&st.rel.periodo!=='custom')loadRel();
+  if(!st.rel.dados&&!st.rel.carregando&&!st.rel.erro&&st.rel.periodo!=='custom')loadRel();
+  if(st.rel.erro&&!st.rel.carregando)return h+`<div class="card empty">Não foi possível carregar as vendas.<br><span style="font-size:12px">${esc(st.rel.erro)}</span><br><br><button class="btn" data-act="aplicarCustom">Tentar de novo</button></div>`;
   if(st.rel.carregando)return h+`<div class="loading"><div class="spin"></div>Carregando vendas…</div>`;
   const D=st.rel.dados;if(!D)return h+`<div class="card empty">Escolha o período.</div>`;
   const r=agg(D.vs);const nd=Math.max(1,Math.round((Math.min(D.f,Date.now())-D.i)/86400000)||1);
@@ -834,7 +836,7 @@ const ACT={
   estLow(id,el){st.estLow=el.dataset.v==='1';render()},
   async copiarCompras(){const rows=comprasRows();const txt=`Lista de compras · ${st.cfg.nome||NOME_PADRAO} · ${new Date().toLocaleDateString('pt-BR')}\n`+rows.map(r=>`- ${r.sug}x ${r.p.nome}`).join('\n');
     try{await navigator.clipboard.writeText(txt);toast('Lista copiada! Cole no WhatsApp do fornecedor.')}catch(e){openModal(`<h3>Lista de compras</h3><p class="hint" style="margin-bottom:8px">Selecione e copie:</p><textarea readonly>${esc(txt)}</textarea>`)}},
-  periodo(id,el){st.rel.periodo=el.dataset.v;st.rel.dados=null;if(st.rel.periodo!=='custom')loadRel();render()},
+  periodo(id,el){st.rel.periodo=el.dataset.v;st.rel.dados=null;st.rel.erro=null;if(st.rel.periodo!=='custom')loadRel();render()},
   aplicarCustom(){loadRel()},
   expMensal(){const[y,m]=String(st.expMes).split('-').map(Number);if(!y||!m){toast('Escolha o mês','warn');return}
     gerarRelatorio('mensal',new Date(y,m-1,1).getTime(),new Date(y,m,1).getTime()-1,`Mensal – ${mesNome(y,m-1)}/${y}`,`Relatorio_Mensal_${y}-${String(m).padStart(2,'0')}_${slugLoja()}.xlsx`)},
