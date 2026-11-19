@@ -58,7 +58,8 @@ h4{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--mute)
 .chip.on{background:#a855f7;color:#fff;border-color:#a855f7}
 .empty{color:var(--mute);text-align:center;padding:28px 10px;font-size:14px}
 /* PDV */
-.pdv{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
+.pdv{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+.pdv>section{min-width:0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:10px}
 .prod{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px;text-align:left;min-height:96px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;transition:transform .08s}
 .prod:active{transform:scale(.96);border-color:var(--acc);box-shadow:0 0 16px rgba(168,85,247,.35)}
@@ -94,7 +95,7 @@ body.show-ticket .ticket{display:flex;position:fixed;inset:0;z-index:50;border-r
   body{padding-left:86px}
   nav{top:0;bottom:0;right:auto;width:86px;flex-direction:column;padding-top:76px;border-top:0;border-right:1px solid var(--line)}
   nav button{flex:none;padding:13px 0}
-  .pdv{grid-template-columns:1fr 380px}
+  .pdv{grid-template-columns:minmax(0,1fr) 380px}
   .ticket,body.show-ticket .ticket{display:flex;position:sticky;inset:auto;top:76px;z-index:auto;max-height:calc(100vh - 92px);border-radius:var(--r);border:1px solid var(--line)}
   .tbar,.only-m{display:none!important}
   main{padding:20px 24px 40px}
