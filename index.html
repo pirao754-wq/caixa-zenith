@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Caixa Zenith</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0d0a14">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Caixa Zenith">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <!-- =========================================================
      CONFIGURAÇÃO: cole aqui os dados do seu projeto Supabase
      (Supabase > Project Settings > API)
@@ -296,6 +304,7 @@ const st={garcons:[],sessao:null,mode:'carregando',cfg:{nome:NOME_PADRAO,caixaAb
   estView:'produtos',estBusca:'',estLow:false,comBusca:'',
   rel:{periodo:'hoje',ini:'',fim:'',dados:null,carregando:false},
   compras:{vend:null,carregando:false},hist:null,pay:null,exportando:false,
+  despesas:[],notas:[],vinculos:[],contasView:'abertas',contasMes:dayKey(Date.now()).slice(0,7),
   expMes:new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'),expAno:String(new Date().getFullYear())};
 const cfgPlain=()=>({nome:st.cfg.nome||NOME_PADRAO,caixaAberto:st.cfg.caixaAberto||null});
 
@@ -321,7 +330,7 @@ async function carregarPublico(){try{const d=chk(await sb.rpc('info_publica'));s
 function entrar(sess){st.sessao=sess;st.ticket={comandaId:null,itens:[]};st.showTicket=false;st.tab=sess.tipo==='dono'?'vender':'comandas';
   closeModal();pararTudo();startSubs();render();window.scrollTo(0,0)}
 async function sair(semServidor){const s=st.sessao;st.sessao=null;pararTudo();
-  Object.assign(st,{produtos:[],comandas:[],caixa:null,vendas:[],hist:null,pend:{},showTicket:false,ticket:{comandaId:null,itens:[]}});
+  Object.assign(st,{produtos:[],comandas:[],caixa:null,vendas:[],hist:null,pend:{},despesas:[],notas:[],vinculos:[],showTicket:false,ticket:{comandaId:null,itens:[]}});
   st.rel.dados=null;st.compras.vend=null;closeModal();render();
   try{if(s&&s.tipo==='dono')await sb.auth.signOut();
     else{const tok=tokenGarcom();localStorage.removeItem(GTK);localStorage.removeItem(GTK+'-id');if(tok&&!semServidor)await sb.rpc('garcom_logout',{p_token:tok})}}catch(e){}
@@ -343,6 +352,11 @@ function startSubs(){
   S.watchCol('comandas',ds=>{st.comandas=ds.sort((a,b)=>(a.numero||0)-(b.numero||0));
     const id=st.ticket.comandaId;if(id&&id!==st.justCreated&&!ds.some(c=>c.id===id))st.ticket.comandaId=null;
     if(ds.some(c=>c.id===st.justCreated))st.justCreated=null;render()});
+  if(isDono()){
+    S.watchCol('despesas',ds=>{st.despesas=ds;render()});
+    S.watchCol('notas_compra',ds=>{st.notas=ds;render()});
+    S.watchCol('vinculos',ds=>{st.vinculos=ds;render()});
+  }
 }
 function subCaixa(id){caixaUnsubs.forEach(f=>f());caixaUnsubs=[];caixaSubId=id;st.caixa=null;st.vendas=[];if(!id||!isDono())return;
   caixaUnsubs.push(S.watchDoc('caixas/'+id,d=>{st.caixa=d?{id,...d}:null;render()}));
@@ -371,7 +385,7 @@ function proxNumero(){const u=new Set(st.comandas.map(c=>Number(c.numero)));let 
 
 /* ============ render ============ */
 let rq=false;function render(){if(rq)return;rq=true;requestAnimationFrame(()=>{rq=false;draw()})}
-const TABS=[['vender','Vender','🛒'],['comandas','Comandas','🧾'],['caixa','Caixa','💰'],['estoque','Estoque','📦'],['relatorios','Relatórios','📊']];
+const TABS=[['vender','Vender','🛒'],['comandas','Comandas','🧾'],['caixa','Caixa','💰'],['contas','Contas','💸'],['estoque','Estoque','📦'],['relatorios','Relatórios','📊']];
 function draw(){
   $('#loja').textContent=st.cfg.nome||NOME_PADRAO;
   const ab=!!st.cfg.caixaAberto;const pill=$('#pill');pill.textContent=ab?(innerWidth<420?'● Aberto':'● Caixa aberto'):(innerWidth<420?'Fechado':'Caixa fechado');pill.classList.toggle('on',ab);
@@ -381,7 +395,7 @@ function draw(){
   const tabs=dono?TABS:[['vender','Lançar','🍺'],['comandas','Comandas','🧾']];
   if(st.role&&!tabs.some(t=>t[0]===st.tab))st.tab='comandas';
   const baixos=st.produtos.filter(p=>p.ativo!==false&&Number(p.minimo)>0&&(Number(p.estoque)||0)<=Number(p.minimo)).length;
-  $('#nav').innerHTML=tabs.map(([k,l,i])=>`<button class="${st.tab===k?'on':''}" data-act="tab" data-id="${k}"><span class="i">${i}</span>${l}${k==='comandas'&&st.comandas.length?`<span class="badge">${st.comandas.length}</span>`:''}${k==='estoque'&&baixos?`<span class="badge">${baixos}</span>`:''}</button>`).join('');
+  $('#nav').innerHTML=tabs.map(([k,l,i])=>`<button class="${st.tab===k?'on':''}" data-act="tab" data-id="${k}"><span class="i">${i}</span>${l}${k==='comandas'&&st.comandas.length?`<span class="badge">${st.comandas.length}</span>`:''}${k==='estoque'&&baixos?`<span class="badge">${baixos}</span>`:''}${k==='contas'&&dono&&contasAlerta().length?`<span class="badge" style="background:#ef4444;color:#fff">${contasAlerta().length}</span>`:''}</button>`).join('');
   const ae=document.activeElement;const fid=ae&&ae.id&&ae.dataset&&ae.dataset.keep?ae.id:null;let sel=null;if(fid){try{sel=[ae.selectionStart,ae.selectionEnd]}catch(e){}}
   let html='';
   if(!st.cfgLoaded||!st.role){html=`<div class="loading"><img src="${LOGO_SRC}" alt="" style="width:100%;max-width:280px;border-radius:12px;margin-bottom:16px"><div class="spin"></div>Carregando…</div>`}
@@ -390,12 +404,29 @@ function draw(){
     if(st.loadWarn)html+=`<div class="banner">Sem conexão com o servidor. Verifique a internet; o sistema continua tentando.</div>`;
     if(st.erroConfig)html+=`<div class="card empty">⚙️ Falta configurar o Supabase.<br>Abra o arquivo <b>index.html</b> e cole a <b>Project URL</b> e a <b>anon key</b> no topo.</div>`;
     else if(!st.sessao)html+=vLogin();
-    else html+={vender:vVender,comandas:vComandas,caixa:vCaixa,estoque:vEstoque,relatorios:vRel}[st.tab]();
+    else{if(dono&&st.tab==='vender'){const al=contasAlerta();if(al.length){const venc=al.filter(d=>diasAte(d.vencimento)<0).length;html+=`<button class="banner" data-act="tab" data-id="contas" style="width:100%;text-align:left;background:#2a1212;color:#fecaca;border-color:#5b2020">💸 ${venc?`${venc} conta${venc>1?'s':''} vencida${venc>1?'s':''}`:''}${venc&&al.length-venc?' e ':''}${al.length-venc?`${al.length-venc} vencendo hoje`:''} · ${fm(al.reduce((s,d)=>s+d.valor,0))} <b>Ver contas ›</b></button>`}}
+      html+={vender:vVender,comandas:vComandas,caixa:vCaixa,contas:vContas,estoque:vEstoque,relatorios:vRel}[st.tab]()}
   }
   $('#app').innerHTML=html;
   if(fid){const el=document.getElementById(fid);if(el){el.focus();if(sel)try{el.setSelectionRange(sel[0],sel[1])}catch(e){}}}
   document.body.classList.toggle('show-ticket',st.showTicket&&st.tab==='vender');
 }
+
+/* ---- Instalar como aplicativo ---- */
+let promptInstalar=null;
+const ehApp=()=>{try{return matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}catch(e){return false}};
+const ehIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();promptInstalar=e;render()});
+window.addEventListener('appinstalled',()=>{promptInstalar=null;toast('App instalado! Procure o ícone da Zenith na tela inicial.');render()});
+const podeInstalar=()=>!ehApp()&&(!!promptInstalar||ehIOS()||/android/i.test(navigator.userAgent));
+async function instalarApp(){
+  if(promptInstalar){promptInstalar.prompt();try{await promptInstalar.userChoice}catch(e){}promptInstalar=null;render();return}
+  const ios=ehIOS();
+  openModal(`<h3>📲 Instalar o Caixa Zenith</h3><p class="mute" style="margin-bottom:12px">Fica com o ícone da Zenith na tela do celular e abre em tela cheia, igual a um aplicativo.</p>
+  ${ios?`<ol style="padding-left:20px;line-height:1.9"><li>Abra este link no <b>Safari</b>.</li><li>Toque no botão <b>Compartilhar</b> (o quadrado com a seta ⬆).</li><li>Role e toque em <b>Adicionar à Tela de Início</b>.</li><li>Toque em <b>Adicionar</b>.</li></ol>`
+  :`<ol style="padding-left:20px;line-height:1.9"><li>Abra este link no <b>Chrome</b>.</li><li>Toque nos <b>três pontinhos ⋮</b> no canto de cima.</li><li>Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).</li><li>Confirme em <b>Instalar</b>.</li></ol>`}
+  <div class="mbtns"><button class="btn primary" data-act="closeModal">Entendi</button></div>`)}
+const btnInstalar=()=>podeInstalar()?`<button class="btn" data-act="instalarApp" style="width:100%;margin-top:12px">📲 Instalar app no celular</button>`:'';
 
 /* ---- Login / Equipe ---- */
 function vLogin(){const gs=st.garcons.filter(g=>g.ativo!==false);
@@ -403,6 +434,7 @@ function vLogin(){const gs=st.garcons.filter(g=>g.ativo!==false);
   <div class="cgrid">${gs.map(g=>`<button class="ccard" style="align-items:center" data-act="login" data-id="${esc(g.id)}"><div style="font-size:30px">🍺</div><div class="cnome">${esc(g.nome)}</div><div class="cmeta">Garçom</div></button>`).join('')}
   <button class="ccard" style="align-items:center;border-color:#4c2a78" data-act="login" data-id="dono"><div style="font-size:30px">👑</div><div class="cnome">Dono</div><div class="cmeta">Acesso total</div></button></div>
   ${gs.length?'':'<p class="hint" style="margin-top:14px">Nenhum garçom cadastrado ainda. Entre como dono e cadastre em ⚙ → Equipe.</p>'}
+  ${btnInstalar()}
   ${st.loadWarn?'<p class="hint" style="margin-top:14px">⚠ Sem conexão com o servidor. <button class="btn sm" data-act="recarregarPublico">Tentar de novo</button></p>':''}</div>`}
 function modalPin(id){const dono=id==='dono';const g=dono?null:st.garcons.find(x=>x.id===id);if(!dono&&!g)return;
   if(dono){openModal(`<h3>👑 Entrar como dono</h3><label class="lbl">E-mail</label><input id="lgEmail" type="email" autocomplete="username" autofocus>
@@ -442,7 +474,7 @@ function vVender(){
   const cats=['Todas',...[...new Set(ativos.map(p=>p.categoria||'Outros'))].sort((a,b)=>a.localeCompare(b,'pt-BR'))];
   if(!cats.includes(st.cat))st.cat='Todas';
   const b=norm(st.busca);
-  const ps=ativos.filter(p=>(st.cat==='Todas'||(p.categoria||'Outros')===st.cat)&&(!b||norm(p.nome).includes(b)||norm(p.categoria).includes(b)));
+  const ps=ativos.filter(p=>(st.cat==='Todas'||(p.categoria||'Outros')===st.cat)&&(!b||norm(p.nome).includes(b)||norm(p.categoria).includes(b)||(p.codigoBarras&&String(p.codigoBarras)===st.busca.trim())));
   const grid=!ativos.length?`<div class="card empty">Nenhum produto cadastrado ainda.<br><br><button class="btn primary" data-act="novoProduto">+ Cadastrar produto</button></div>`
     :!ps.length?`<div class="empty">Nada encontrado.</div>`
     :`<div class="grid">${ps.map(p=>{const e=Number(p.estoque)||0,m=Number(p.minimo)||0;const cls=e<=0?'zero':(m>0&&e<=m?'low':'');
@@ -513,8 +545,9 @@ async function loadHist(){st.hist=st.hist||[];try{const cs=await S.getCol('caixa
 
 /* ---- Estoque ---- */
 function vEstoque(){
-  const seg=`<div class="seg"><button class="${st.estView==='produtos'?'on':''}" data-act="estView" data-v="produtos">Produtos</button><button class="${st.estView==='compras'?'on':''}" data-act="estView" data-v="compras">Lista de compras</button></div>`;
+  const seg=`<div class="seg"><button class="${st.estView==='produtos'?'on':''}" data-act="estView" data-v="produtos">Produtos</button><button class="${st.estView==='notas'?'on':''}" data-act="estView" data-v="notas">Notas de compra</button><button class="${st.estView==='compras'?'on':''}" data-act="estView" data-v="compras">O que comprar</button></div>`;
   if(st.estView==='compras')return seg+vCompras();
+  if(st.estView==='notas')return seg+vNotas();
   const b=norm(st.estBusca);const low=p=>Number(p.minimo)>0&&(Number(p.estoque)||0)<=Number(p.minimo);
   let ps=st.produtos.filter(p=>(!b||norm(p.nome).includes(b)||norm(p.categoria).includes(b))&&(!st.estLow||low(p)));
   ps=ps.slice().sort((a,c)=>(low(c)-low(a))||String(a.nome).localeCompare(String(c.nome),'pt-BR'));
@@ -565,7 +598,7 @@ function vRel(){
   let h=`<div class="card exp"><div class="exp-t">📥 Relatórios para o contador <span class="mute">(Excel)</span></div>
     <div class="exp-row"><label>Mensal</label><input type="month" data-bind="expMes" value="${esc(st.expMes)}"><button class="btn primary sm" data-act="expMensal" ${st.exportando?'disabled':''}>Baixar</button></div>
     <div class="exp-row"><label>Anual</label><select data-bind="expAno">${anos.map(y=>`<option ${String(y)===String(st.expAno)?'selected':''}>${y}</option>`).join('')}</select><button class="btn primary sm" data-act="expAnual" ${st.exportando?'disabled':''}>Baixar</button></div>
-    <p class="hint">Inclui resumo, vendas por dia (e por mês no anual), todas as vendas, produtos vendidos, caixas, sangrias e estoque atual.</p></div>
+    <p class="hint">Inclui resumo, vendas por dia (e por mês no anual), todas as vendas, produtos vendidos, caixas, sangrias, despesas, notas de compra e estoque atual.</p></div>
   <h4 style="margin-top:18px">Ver na tela</h4>`;
   h+=`<div class="chips">${P.map(([k,l])=>`<button class="chip ${st.rel.periodo===k?'on':''}" data-act="periodo" data-v="${k}">${l}</button>`).join('')}</div>`;
   if(st.rel.periodo==='custom')h+=`<div class="toolbar"><input type="date" data-bind="relIni" value="${esc(st.rel.ini)}"><input type="date" data-bind="relFim" value="${esc(st.rel.fim)}"><button class="btn primary" data-act="aplicarCustom">Ver</button></div>`;
@@ -575,10 +608,10 @@ function vRel(){
   const D=st.rel.dados;if(!D)return h+`<div class="card empty">Escolha o período.</div>`;
   const r=agg(D.vs);const nd=Math.max(1,Math.round((Math.min(D.f,Date.now())-D.i)/86400000)||1);
   h+=`<p class="mute" style="font-size:13px;margin-bottom:10px">${new Date(D.i).toLocaleDateString('pt-BR')} até ${new Date(Math.min(D.f,Date.now())).toLocaleDateString('pt-BR')}</p>`;
-  if(!r.n)return h+`<div class="card empty">Nenhuma venda neste período.</div>`;
+  if(!r.n)return h+`<div class="card empty">Nenhuma venda neste período.</div>`+blocoDespesas(D,r);
   h+=`<div style="margin:-2px 0 12px"><button class="btn sm" data-act="expPeriodo" ${st.exportando?'disabled':''}>📥 Baixar este período em Excel</button></div>`;
   h+=`<div class="kpis"><div class="kpi hl"><span>Faturamento</span><b>${fm(r.total)}</b>${nd>1?`<small>média ${fm(r.total/nd)}/dia</small>`:''}</div><div class="kpi"><span>Vendas</span><b>${r.n}</b>${nd>1?`<small>${(r.n/nd).toFixed(1).replace('.',',')}/dia</small>`:''}</div><div class="kpi"><span>Ticket médio</span><b>${fm(r.total/r.n)}</b></div><div class="kpi"><span>Lucro estimado</span><b>${fm(r.lucro)}</b><small>${r.semCusto?'* há produtos sem custo':'venda − custo'}</small></div></div>
-  <h4>Formas de pagamento</h4><div class="card">${barsFormas(r.f)}</div>`;
+  <h4>Formas de pagamento</h4><div class="card">${barsFormas(r.f)}</div>`+blocoDespesas(D,r);
   const pg=porGarcom(D.vs);if(pg.some(g=>g.id)){h+=`<h4>Por garçom</h4><div class="card tablewrap"><table><thead><tr><th>Garçom</th><th class="r">Comandas</th><th class="r">Total</th></tr></thead><tbody>${pg.map(g=>`<tr><td>${g.id?esc(nomeDe(g.id)||'…'):'Balcão / caixa'}</td><td class="r">${g.n}</td><td class="r"><b>${fm(g.t)}</b></td></tr>`).join('')}</tbody></table></div>`}
   const prods=Object.values(r.prods).sort((a,b)=>b.q-a.q);
   h+=`<h4>Quanto sai de cada produto</h4><div class="card tablewrap"><table><thead><tr><th>Produto</th><th class="r">Qtd</th>${nd>1?'<th class="r">Por dia</th><th class="r">Por semana</th>':''}<th class="r">Total</th></tr></thead><tbody>${prods.map(p=>`<tr><td>${esc(p.nome)}</td><td class="r"><b>${p.q}</b></td>${nd>1?`<td class="r">${(p.q/nd).toFixed(1).replace('.',',')}</td><td class="r">${(p.q/nd*7).toFixed(1).replace('.',',')}</td>`:''}<td class="r">${fm(p.t)}</td></tr>`).join('')}</tbody></table></div>`;
@@ -588,6 +621,223 @@ function vRel(){
   if(hs.length>1){const mx=Math.max(...hs.map(x=>x[1]));h+=`<h4>Horários de movimento</h4><div class="card"><div class="bars">${hs.map(([i,t])=>`<div class="bar-row"><span>${String(i).padStart(2,'0')}h – ${String((i+1)%24).padStart(2,'0')}h</span><div class="track"><div class="fill" style="width:${t/mx*100}%;background:#22d3ee"></div></div><b>${fm(t)}</b></div>`).join('')}</div></div>`}
   return h;
 }
+
+/* ---- Contas a pagar ---- */
+const CAT_DESP=['Luz','Água','Aluguel','Internet','Gás','Fornecedor','Funcionários','Impostos','Manutenção','Outros'];
+const FORMAS_PAG={pix:'Pix',dinheiro:'Dinheiro',boleto:'Boleto',debito:'Débito',credito:'Crédito',transferencia:'Transferência'};
+const hojeStr=()=>dayKey(Date.now());
+const ymdDate=s=>{const[a,b,c]=String(s||'').split('-').map(Number);return a?new Date(a,b-1,c):null};
+const ddmm=s=>{const d=ymdDate(s);return d?d.toLocaleDateString('pt-BR'):'—'};
+function diasAte(s){const d=ymdDate(s);if(!d)return 0;const h=ymdDate(hojeStr());return Math.round((d-h)/86400000)}
+function proxMes(s){const[a,b,c]=String(s).split('-').map(Number);const ult=new Date(a,b+1,0).getDate();const d=new Date(a,b,Math.min(c,ult));return dayKey(d.getTime())}
+function statusConta(d){if(d.pago)return'paga';const n=diasAte(d.vencimento);return n<0?'atrasada':n===0?'hoje':n<=7?'semana':'futura'}
+function contasAlerta(){return st.despesas.filter(d=>!d.pago&&diasAte(d.vencimento)<=0)}
+function rotuloVenc(d){if(d.pago)return'Paga em '+(d.pagoEm?new Date(d.pagoEm).toLocaleDateString('pt-BR'):'—');const n=diasAte(d.vencimento);
+  return n<0?`Venceu há ${-n} dia${n===-1?'':'s'}`:n===0?'Vence hoje':n===1?'Vence amanhã':`Vence em ${n} dias · ${ddmm(d.vencimento)}`}
+const COR_ST={atrasada:'#fca5a5',hoje:'#fcd34d',semana:'#fde68a',futura:'var(--mute)',paga:'#86efac'};
+function vContas(){
+  const abertas=st.despesas.filter(d=>!d.pago).sort((a,b)=>String(a.vencimento).localeCompare(String(b.vencimento)));
+  const venc=abertas.filter(d=>diasAte(d.vencimento)<0),proximas=abertas.filter(d=>{const n=diasAte(d.vencimento);return n>=0&&n<=30});
+  const[iM,fM]=(()=>{const[y,m]=String(st.contasMes).split('-').map(Number);return[new Date(y,m-1,1).getTime(),new Date(y,m,1).getTime()-1]})();
+  const pagasMes=st.despesas.filter(d=>d.pago&&d.pagoEm>=iM&&d.pagoEm<=fM).sort((a,b)=>b.pagoEm-a.pagoEm);
+  const soma=l=>l.reduce((s,d)=>s+(Number(d.valor)||0),0);
+  let h=`<div class="toolbar" style="justify-content:space-between;align-items:center"><h2 style="margin:0">💸 Contas</h2><button class="btn primary" data-act="novaConta">+ Nova conta</button></div>
+  <div class="kpis"><div class="kpi ${venc.length?'':'hl'}" style="${venc.length?'border-color:#5b2020;background:#2a1212':''}"><span>Vencidas</span><b style="${venc.length?'color:#fca5a5':''}">${fm(soma(venc))}</b><small>${venc.length} conta${venc.length===1?'':'s'}</small></div>
+  <div class="kpi"><span>Próximos 30 dias</span><b>${fm(soma(proximas))}</b><small>${proximas.length} conta${proximas.length===1?'':'s'}</small></div>
+  <div class="kpi"><span>Pagas em ${mesNome(...String(st.contasMes).split('-').map((x,i)=>i?Number(x)-1:Number(x)))}</span><b>${fm(soma(pagasMes))}</b><small>${pagasMes.length} conta${pagasMes.length===1?'':'s'}</small></div>
+  <div class="kpi"><span>Total em aberto</span><b>${fm(soma(abertas))}</b><small>${abertas.length} conta${abertas.length===1?'':'s'}</small></div></div>
+  <div class="seg" style="margin-top:14px"><button class="${st.contasView==='abertas'?'on':''}" data-act="contasView" data-v="abertas">A pagar (${abertas.length})</button><button class="${st.contasView==='pagas'?'on':''}" data-act="contasView" data-v="pagas">Pagas</button></div>`;
+  const linha=d=>{const s=statusConta(d);return `<div class="vrow" style="${s==='atrasada'?'border-color:#5b2020':''}"><button class="vmain" style="text-align:left" data-act="editConta" data-id="${esc(d.id)}"><div class="t1" style="color:${COR_ST[s]}">${esc(rotuloVenc(d))}${d.recorrente==='mensal'?' · 🔁 todo mês':''}</div><div class="t2"><b>${esc(d.descricao)}</b> <span class="tag">${esc(d.categoria||'Outros')}</span>${d.forma&&d.pago?` <span class="tag">${esc(FORMAS_PAG[d.forma]||d.forma)}</span>`:''}</div></button><div class="vt">${fm(d.valor)}</div>${d.pago?'':`<button class="btn sm primary" data-act="pagarConta" data-id="${esc(d.id)}">✓ Pagar</button>`}</div>`};
+  if(st.contasView==='abertas'){
+    h+=abertas.length?`<div class="list">${abertas.map(linha).join('')}</div>`:`<div class="card empty">Nenhuma conta a pagar. 🎉<br><span style="font-size:12px">Cadastre luz, água, aluguel, fornecedores… e o sistema avisa quando estiver perto de vencer.</span></div>`;
+  }else{
+    h+=`<div class="toolbar"><input type="month" data-bind="contasMes" value="${esc(st.contasMes)}"></div>`;
+    h+=pagasMes.length?`<div class="list">${pagasMes.map(linha).join('')}</div><p class="mute" style="margin-top:10px;font-size:13px">Total pago no mês: <b style="color:var(--text)">${fm(soma(pagasMes))}</b></p>`:`<div class="card empty">Nenhuma conta paga neste mês.</div>`;
+  }
+  return h;
+}
+function modalConta(id){const d=id?st.despesas.find(x=>x.id===id):{vencimento:hojeStr(),categoria:''};if(!d)return;
+  const cats=[...new Set([...CAT_DESP,...st.despesas.map(x=>x.categoria).filter(Boolean)])];
+  openModal(`<h3>${id?'Editar conta':'Nova conta'}</h3>
+  <label class="lbl">Descrição *</label><input id="cDesc" value="${esc(d.descricao||'')}" placeholder="Ex.: Conta de luz" ${id?'':'autofocus'}>
+  <label class="lbl">Categoria</label><input id="cCat" list="dlCatD" value="${esc(d.categoria||'')}" placeholder="Ex.: Luz"><datalist id="dlCatD">${cats.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+  <div class="g2"><div><label class="lbl">Valor *</label><input id="cVal" inputmode="decimal" value="${fmv(d.valor)}" placeholder="0,00"></div><div><label class="lbl">Vencimento *</label><input id="cVenc" type="date" value="${esc(d.vencimento||'')}"></div></div>
+  <label class="lbl" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input id="cRec" type="checkbox" style="width:auto" ${d.recorrente==='mensal'?'checked':''}> 🔁 Repete todo mês (cria a próxima quando pagar)</label>
+  <label class="lbl">Observação</label><input id="cObs" value="${esc(d.obs||'')}" placeholder="Opcional">
+  ${d.pago?`<p class="hint">✓ ${esc(rotuloVenc(d))}${d.forma?' · '+esc(FORMAS_PAG[d.forma]||d.forma):''}</p>`:''}
+  <div class="mbtns">${id?`<button class="btn ghost danger" id="cDel">Excluir</button>`:''}${d.pago?`<button class="btn" id="cDesf">Desfazer pagamento</button>`:''}<button class="btn primary" id="cOk">Salvar</button></div>`,()=>{
+  $('#cOk').onclick=async()=>{const descricao=$('#cDesc').value.trim(),valor=pm($('#cVal').value),vencimento=$('#cVenc').value;
+    if(!descricao){toast('Informe a descrição','warn');return}if(!valor){toast('Informe o valor','warn');return}if(!vencimento){toast('Informe o vencimento','warn');return}
+    const cid=id||'d'+uid();const base=id?{...d}:{pago:false,criadoEm:Date.now()};delete base.id;
+    const data={...base,descricao,categoria:$('#cCat').value.trim()||'Outros',valor,vencimento,recorrente:$('#cRec').checked?'mensal':null,obs:$('#cObs').value.trim()||null,serie:base.serie||cid};
+    try{await W(()=>S.set('despesas/'+cid,data));closeModal();toast(id?'Conta atualizada':'Conta cadastrada')}catch(e){}};
+  if(id){let arm=false;$('#cDel').onclick=async()=>{if(!arm){arm=true;$('#cDel').textContent='Toque de novo p/ excluir';return}try{await W(()=>S.del('despesas/'+id));closeModal();toast('Conta excluída')}catch(e){}}}
+  if(d.pago)$('#cDesf').onclick=async()=>{try{await W(()=>S.update('despesas/'+id,{pago:false,pagoEm:null,forma:null}));closeModal();toast('Pagamento desfeito')}catch(e){}};
+})}
+function modalPagarConta(id){const d=st.despesas.find(x=>x.id===id);if(!d)return;const cxAberto=!!st.cfg.caixaAberto&&!!st.caixa;
+  openModal(`<h3>Pagar conta</h3><p style="margin-bottom:2px"><b>${esc(d.descricao)}</b></p><p class="mute" style="font-size:13px">${esc(rotuloVenc(d))}</p>
+  <div class="g2"><div><label class="lbl">Valor pago</label><input id="pgVal" inputmode="decimal" value="${fmv(d.valor)}"></div><div><label class="lbl">Data do pagamento</label><input id="pgData" type="date" value="${hojeStr()}"></div></div>
+  <label class="lbl">Forma de pagamento</label><select id="pgForma">${Object.entries(FORMAS_PAG).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+  <label class="lbl" id="pgSangL" style="display:none;gap:10px;align-items:center;cursor:pointer"><input id="pgSang" type="checkbox" style="width:auto" ${cxAberto?'checked':'disabled'}> Tirar o dinheiro do caixa (registra uma sangria)${cxAberto?'':' · caixa fechado'}</label>
+  ${d.recorrente==='mensal'?`<p class="hint">🔁 A conta do mês seguinte (${ddmm(proxMes(d.vencimento))}) será criada automaticamente.</p>`:''}
+  <div class="mbtns"><button class="btn primary" id="pgOk">Confirmar pagamento</button></div>`,()=>{
+  const sel=$('#pgForma'),sl=$('#pgSangL');const upd=()=>{sl.style.display=sel.value==='dinheiro'?'flex':'none'};sel.onchange=upd;upd();
+  $('#pgOk').onclick=async()=>{const valor=pm($('#pgVal').value);if(!valor){toast('Informe o valor','warn');return}
+    const dt=ymdDate($('#pgData').value)||new Date();const agora=new Date();dt.setHours(agora.getHours(),agora.getMinutes(),0,0);const forma=sel.value;
+    $('#pgOk').disabled=true;
+    try{await W(()=>S.update('despesas/'+id,{pago:true,pagoEm:dt.getTime(),valor,forma}));
+      if(d.recorrente==='mensal'){const serie=d.serie||d.id;const venc=proxMes(d.vencimento);const nid=`${serie}-${venc.slice(0,7)}`;
+        if(!st.despesas.some(x=>x.id===nid))await W(()=>S.set('despesas/'+nid,{descricao:d.descricao,categoria:d.categoria,valor:d.valor,vencimento:venc,pago:false,recorrente:'mensal',serie,obs:d.obs||null,criadoEm:Date.now()}))}
+      if(forma==='dinheiro'&&$('#pgSang')&&$('#pgSang').checked&&st.caixa){const movs=clone(st.caixa.movs||[]);movs.push({tipo:'sangria',valor,motivo:'Pagamento: '+d.descricao,ts:Date.now()});await W(()=>S.update('caixas/'+st.caixa.id,{movs}))}
+      closeModal();toast('Conta paga ✓'+(d.recorrente==='mensal'?' · próxima criada':''))}catch(e){const b=$('#pgOk');if(b)b.disabled=false}}})}
+function despesasPeriodo(i,f){return st.despesas.filter(d=>d.pago&&d.pagoEm>=i&&d.pagoEm<=f)}
+function blocoDespesas(D,r){const ds=despesasPeriodo(D.i,D.f);if(!ds.length)return'';const tot=ds.reduce((s,d)=>s+d.valor,0);
+  const cats={};ds.forEach(d=>{const c=d.categoria||'Outros';cats[c]=(cats[c]||0)+d.valor});const mx=Math.max(...Object.values(cats));
+  return `<h4>Despesas pagas no período</h4><div class="card"><div class="bars">${Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div class="bar-row"><span>${esc(c)}</span><div class="track"><div class="fill" style="width:${v/mx*100}%;background:#f87171"></div></div><b>${fm(v)}</b></div>`).join('')}</div>
+  <div class="row-b" style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><span>Total de despesas</span><b>${fm(tot)}</b></div>
+  ${r&&r.n?`<div class="row-b" style="margin-top:6px"><span>Resultado <span class="mute" style="font-size:12px">(lucro estimado − despesas)</span></span><b style="color:${r.lucro-tot>=0?'#86efac':'#fca5a5'}">${fm(r.lucro-tot)}</b></div>`:''}</div>`}
+
+/* ---- Notas de compra (importar XML da NF-e) ---- */
+const UNID=['UN','UND','UNID','UNIDADE','PC','PÇ','PECA','PEÇA','LT','LATA','GF','GARRAFA','KG','L'];
+function lerXmlNota(txt){
+  const doc=new DOMParser().parseFromString(txt,'application/xml');if(doc.getElementsByTagName('parsererror').length)throw new Error('arquivo inválido');
+  const T=(el,n)=>{const x=el&&el.getElementsByTagNameNS('*',n)[0];return x?x.textContent.trim():''};
+  const N=(el,n)=>{const v=parseFloat(T(el,n).replace(',','.'));return isFinite(v)?v:0};
+  const inf=doc.getElementsByTagNameNS('*','infNFe')[0];if(!inf)throw new Error('nao_nfe');
+  const emit=inf.getElementsByTagNameNS('*','emit')[0],ide=inf.getElementsByTagNameNS('*','ide')[0],tot=inf.getElementsByTagNameNS('*','ICMSTot')[0];
+  const chave=(inf.getAttribute('Id')||'').replace(/\D/g,'')||T(doc,'chNFe');
+  const itens=[...inf.getElementsByTagNameNS('*','det')].map(det=>{const p=det.getElementsByTagNameNS('*','prod')[0],imp=det.getElementsByTagNameNS('*','imposto')[0];
+    const vProd=N(p,'vProd'),extra=N(p,'vFrete')+N(p,'vSeg')+N(p,'vOutro')+N(imp,'vIPI')+N(imp,'vICMSST')-N(p,'vDesc');
+    const ean=[T(p,'cEAN'),T(p,'cEANTrib')].find(e=>/^\d{8,14}$/.test(e))||'';
+    return{cProd:T(p,'cProd'),ean,nome:T(p,'xProd'),ncm:T(p,'NCM'),uCom:T(p,'uCom').toUpperCase(),qCom:N(p,'qCom'),vUnCom:N(p,'vUnCom'),
+      vProd:Math.round(vProd*100),custoTotal:Math.round((vProd+extra)*100)}});
+  const dups=[...inf.getElementsByTagNameNS('*','dup')].map(d=>({n:T(d,'nDup'),venc:T(d,'dVenc'),valor:Math.round(N(d,'vDup')*100)})).filter(d=>d.venc&&d.valor);
+  const emissao=(T(ide,'dhEmi')||T(ide,'dEmi')).slice(0,10);
+  return{chave,modelo:T(ide,'mod'),numero:T(ide,'nNF'),serie:T(ide,'serie'),fornecedor:T(emit,'xFant')||T(emit,'xNome'),razao:T(emit,'xNome'),cnpj:T(emit,'CNPJ')||T(emit,'CPF'),
+    emissao,total:Math.round(N(tot,'vNF')*100),itens,dups}}
+function chuteFator(it){if(UNID.includes(it.uCom))return 1;const m=it.nome.match(/C\/\s?(\d{1,3})\b/i)||it.nome.match(/\b(\d{1,3})\s?X\s?\d/i)||it.nome.match(/\b(?:CX|FD|PCT|FARDO|CAIXA)\s?(?:C\/)?\s?(\d{1,3})\b/i);return m?Number(m[1]):1}
+function sugerirProduto(nota,it){const v=st.vinculos.find(x=>x.id===nota.cnpj+'|'+it.cProd);if(v&&st.produtos.some(p=>p.id===v.produtoId))return{pid:v.produtoId,fator:Number(v.fator)||1,como:'lembrado'};
+  if(it.ean){const p=st.produtos.find(p=>p.codigoBarras===it.ean);if(p)return{pid:p.id,fator:chuteFator(it),como:'código de barras'}}
+  const n=norm(it.nome);const p=st.produtos.find(p=>norm(p.nome)===n);if(p)return{pid:p.id,fator:chuteFator(it),como:'mesmo nome'};
+  const tk=s=>norm(s).replace(/[^a-z0-9]+/g,' ').split(' ').filter(t=>t.length>=3||/\d/.test(t));const itT=new Set(tk(it.nome));let best=null,bs=0;
+  for(const p of st.produtos){const pt=tk(p.nome);if(!pt.length)continue;if(pt.every(t=>itT.has(t))&&(pt.length>=2||pt[0].length>=5)&&pt.length>bs){best=p;bs=pt.length}}
+  if(best)return{pid:best.id,fator:chuteFator(it),como:'nome parecido',confira:true};
+  return{pid:'__novo',fator:chuteFator(it),como:''}}
+function vNotas(){
+  const ns=st.notas.slice().sort((a,b)=>String(b.emissao).localeCompare(String(a.emissao))||(b.criadoEm-a.criadoEm));
+  return `<div class="card" style="margin-bottom:14px"><div class="row-b"><div style="flex:1;min-width:220px"><b>📄 Lançar nota de compra</b><p class="hint" style="margin-top:4px">Envie o arquivo <b>XML</b> da nota do fornecedor. O sistema lê os itens, soma no estoque, atualiza o custo e lança as parcelas em Contas.</p></div>
+  <div class="btnrow"><button class="btn primary" onclick="this.nextElementSibling.click()">📂 Importar XML</button><input type="file" accept=".xml,text/xml,application/xml,application/octet-stream" data-file="xmlNota" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><button class="btn" data-act="compraManual">✍ Lançar sem XML</button></div></div>
+  <details style="margin-top:10px;font-size:13px;color:var(--mute)"><summary style="cursor:pointer">Onde consigo o XML?</summary><p style="margin-top:6px">• O fornecedor manda por e-mail junto com o boleto (arquivo terminado em <b>.xml</b>). Também dá pra pedir no WhatsApp.<br>• Ou baixe no <a href="https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=completa&tipoConteudo=7PhJ+gAVw2g=" target="_blank" rel="noopener" style="color:#c084fc">Portal Nacional da NF-e</a> com a <b>chave de acesso</b> (44 números, fica embaixo do código de barras da nota). Para baixar o XML o portal pede o <b>certificado digital</b> da empresa, então o mais fácil costuma ser pedir o XML pro fornecedor.<br>• <b>Nota em papel, cupom de mercado ou atacado?</b> Use <b>✍ Lançar sem XML</b>: escolha os produtos, a quantidade e quanto pagou.</p></details></div>
+  ${ns.length?`<div class="list">${ns.map(n=>`<button class="vrow" style="text-align:left" data-act="verNota" data-id="${esc(n.id)}"><div class="vmain"><div class="t1">${ddmm(n.emissao)} · NF ${esc(n.numero||'—')}</div><div class="t2"><b>${esc(n.fornecedor||'Fornecedor')}</b> · ${(n.itens||[]).length} itens${n.chave?'':' · <span class="tag">manual</span>'}</div></div><div class="vt">${fm(n.total)}</div></button>`).join('')}</div>`
+  :`<div class="card empty">Nenhuma nota lançada ainda.</div>`}`}
+async function importarXml(file){if(!file)return;let nota;
+  try{nota=lerXmlNota(await file.text())}catch(e){toast(e.message==='nao_nfe'?'Esse arquivo não é o XML de uma nota fiscal (NF-e).':'Não consegui ler esse arquivo. Envie o .xml da nota.','bad');return}
+  if(!nota.itens.length){toast('A nota não tem itens.','warn');return}
+  const ja=st.notas.find(n=>n.chave&&n.chave===nota.chave);if(ja){toast(`Essa nota já foi lançada (${ddmm(ja.emissao)}).`,'warn');return}
+  modalConferirNota(nota)}
+function modalConferirNota(nota){
+  const ps=st.produtos.slice().sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt-BR'));const cats=[...new Set(st.produtos.map(x=>x.categoria).filter(Boolean))];
+  const sug=nota.itens.map(it=>sugerirProduto(nota,it));
+  const opt=(sel)=>`<option value="__novo" ${sel==='__novo'?'selected':''}>➕ Criar produto novo</option><option value="__ign" ${sel==='__ign'?'selected':''}>🚫 Não lançar no estoque</option><optgroup label="Seus produtos">${ps.map(p=>`<option value="${esc(p.id)}" ${p.id===sel?'selected':''}>${esc(p.nome)}</option>`).join('')}</optgroup>`;
+  openModal(`<h3>Conferir nota de compra</h3>
+  <div class="card" style="background:var(--card2);margin-bottom:10px"><b>${esc(nota.fornecedor||'Fornecedor')}</b><div class="mute" style="font-size:13px">NF ${esc(nota.numero)} · ${ddmm(nota.emissao)} · ${nota.itens.length} itens · total <b style="color:var(--text)">${fm(nota.total)}</b></div></div>
+  <p class="hint" style="margin-bottom:8px">Confira em qual produto cada item entra e <b>quantas unidades vêm em cada item</b> (ex.: caixa com 12 → 12). O sistema lembra disso nas próximas notas desse fornecedor.</p>
+  <div id="ntItens">${nota.itens.map((it,i)=>`<div class="card" style="padding:10px;margin-bottom:8px" data-i="${i}">
+    <div style="font-weight:700;font-size:14px">${esc(it.nome)}</div>
+    <div class="mute" style="font-size:12px;margin:2px 0 8px">${String(it.qCom).replace('.',',')} ${esc(it.uCom)} × ${fm(Math.round(it.vUnCom*100))} = ${fm(it.vProd)}${sug[i].como?` · <span style="color:${sug[i].confira?'#fcd34d':'#86efac'}">${sug[i].confira?'⚠ nome parecido, confira':'reconhecido pelo '+sug[i].como}</span>`:''}</div>
+    <select class="ntSel" data-i="${i}">${opt(sug[i].pid)}</select>
+    <div class="ntNovo" style="display:${sug[i].pid==='__novo'?'grid':'none'};grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"><input class="ntNome" value="${esc(it.nome)}" placeholder="Nome do produto" style="grid-column:1/-1"><input class="ntCat" list="dlCatN" placeholder="Categoria"><input class="ntPreco" inputmode="decimal" placeholder="Preço de venda *"></div>
+    <div class="ntFatorRow" style="display:${sug[i].pid==='__ign'?'none':'flex'};gap:8px;align-items:center;margin-top:8px;font-size:13px"><span class="mute">Unidades por ${esc(it.uCom||'item')}:</span><input class="ntFator" inputmode="numeric" value="${sug[i].fator}" style="width:70px;padding:7px 8px"><span class="ntRes" style="flex:1;text-align:right"></span></div>
+  </div>`).join('')}</div><datalist id="dlCatN">${cats.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+  <label class="lbl" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input id="ntCusto" type="checkbox" style="width:auto" checked> Atualizar o custo dos produtos com o valor da nota</label>
+  ${nota.dups.length?`<label class="lbl" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input id="ntDup" type="checkbox" style="width:auto;margin-top:2px" checked> <span>Lançar ${nota.dups.length===1?'o boleto':'as '+nota.dups.length+' parcelas'} em Contas a pagar<br><span class="mute" style="font-weight:500">${nota.dups.map(d=>`${ddmm(d.venc)}: ${fm(d.valor)}`).join(' · ')}</span></span></label>`
+  :`<label class="lbl" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input id="ntDup" type="checkbox" style="width:auto"> Lançar o total (${fm(nota.total)}) em Contas a pagar, vencendo em <input id="ntVenc" type="date" value="${hojeStr()}" style="width:auto;padding:6px 8px"></label>`}
+  <div class="mbtns"><button class="btn primary big" id="ntOk">Lançar nota</button></div>`,s=>{
+    const upd=card=>{const i=+card.dataset.i,it=nota.itens[i],v=card.querySelector('.ntSel').value;
+      card.querySelector('.ntNovo').style.display=v==='__novo'?'grid':'none';card.querySelector('.ntFatorRow').style.display=v==='__ign'?'none':'flex';
+      const f=Math.max(1,pn(card.querySelector('.ntFator').value)||1);const un=it.qCom*f;
+      card.querySelector('.ntRes').innerHTML=`+<b>${String(+un.toFixed(3)).replace('.',',')}</b> un · custo <b>${fm(Math.round(it.custoTotal/un))}</b>/un`};
+    s.querySelectorAll('#ntItens .card').forEach(c=>{upd(c);c.querySelector('.ntSel').onchange=()=>upd(c);c.querySelector('.ntFator').oninput=()=>upd(c)});
+    $('#ntOk').onclick=()=>lancarNota(nota,s)})}
+async function lancarNota(nota,s){
+  const linhas=[...s.querySelectorAll('#ntItens .card')].map(c=>{const i=+c.dataset.i;return{it:nota.itens[i],sel:c.querySelector('.ntSel').value,fator:Math.max(1,pn(c.querySelector('.ntFator').value)||1),
+    nome:c.querySelector('.ntNome').value.trim(),cat:c.querySelector('.ntCat').value.trim(),preco:pm(c.querySelector('.ntPreco').value)}});
+  const faltaPreco=linhas.find(l=>l.sel==='__novo'&&(!l.nome||!l.preco));if(faltaPreco){toast(`Informe nome e preço de venda de "${faltaPreco.it.nome}"`,'warn');return}
+  const b=$('#ntOk');b.disabled=true;b.textContent='Lançando…';const atualizaCusto=$('#ntCusto').checked;
+  try{
+    const nid='n'+uid();
+    for(const l of linhas){if(l.sel==='__novo'){l.pid='p'+uid();l.novo=true}else if(l.sel!=='__ign')l.pid=l.sel}
+    // 1) registra a nota primeiro (a chave é única: se já foi lançada, para aqui sem mexer em nada)
+    await W(()=>S.set('notas_compra/'+nid,{chave:nota.chave||null,numero:nota.numero,serie:nota.serie,fornecedor:nota.fornecedor,cnpj:nota.cnpj,emissao:nota.emissao,total:nota.total,criadoEm:Date.now(),
+      itens:linhas.map(l=>({nome:l.it.nome,cProd:l.it.cProd,ean:l.it.ean,qCom:l.it.qCom,uCom:l.it.uCom,vProd:l.it.vProd,custoTotal:l.it.custoTotal,pid:l.pid||null,fator:l.fator,unidades:l.pid?l.it.qCom*l.fator:0}))}));
+    // 2) produtos novos
+    for(const l of linhas.filter(l=>l.novo)){const un=l.it.qCom*l.fator;
+      await W(()=>S.set('produtos/'+l.pid,{nome:l.nome,categoria:l.cat||'Outros',preco:l.preco,custo:Math.round(l.it.custoTotal/un),estoque:0,minimo:0,ativo:true,codigoBarras:l.it.ean||null}))}
+    // 3) estoque
+    const ent=linhas.filter(l=>l.pid).map(l=>({pid:l.pid,qtd:l.it.qCom*l.fator}));
+    if(ent.length){chk(await sb.rpc('baixar_estoque',{p_itens:ent,p_sinal:1}))}
+    // 3) lembrar vínculos, custo e código de barras
+    for(const l of linhas.filter(l=>l.pid)){
+      if(nota.cnpj&&l.it.cProd)await W(()=>S.set('vinculos/'+nota.cnpj+'|'+l.it.cProd,{produtoId:l.pid,fator:l.fator}));
+      if(!l.novo){const p=st.produtos.find(x=>x.id===l.pid);const u={};if(atualizaCusto)u.custo=Math.round(l.it.custoTotal/(l.it.qCom*l.fator));if(l.it.ean&&p&&!p.codigoBarras)u.codigoBarras=l.it.ean;
+        if(Object.keys(u).length)await W(()=>q('produtos/'+l.pid,()=>S.update('produtos/'+l.pid,u)))}}
+    // 4) contas a pagar
+    let nContas=0;if($('#ntDup').checked){const parc=nota.dups.length?nota.dups:[{n:'1',venc:($('#ntVenc')&&$('#ntVenc').value)||hojeStr(),valor:nota.total}];
+      for(const[k,d]of parc.entries()){await W(()=>S.set(`despesas/nf${(nota.chave||nid).slice(-12)}-${k+1}`,{descricao:`${nota.fornecedor||'Fornecedor'} · NF ${nota.numero}${parc.length>1?` (${k+1}/${parc.length})`:''}`,categoria:'Fornecedor',valor:d.valor,vencimento:d.venc,pago:false,notaId:nid,criadoEm:Date.now()}));nContas++}}
+    depoisDeGravar();closeModal();st.compras.vend=null;
+    const tot=ent.reduce((s,e)=>s+e.qtd,0);toast(`Nota lançada: +${String(+tot.toFixed(3)).replace('.',',')} unidades no estoque${nContas?` · ${nContas} conta${nContas>1?'s':''} a pagar`:''}`)}
+  catch(e){console.error(e);if(b){b.disabled=false;b.textContent='Lançar nota'}if(e&&/duplicate|unique|23505/i.test(e.message||''))toast('Essa nota já foi lançada antes.','warn')}}
+
+/* ---- Compra sem XML (nota em papel, mercado, atacado) ---- */
+function modalCompraManual(){
+  const ps=st.produtos.filter(p=>p.ativo!==false).slice().sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt-BR'));const cats=[...new Set(st.produtos.map(x=>x.categoria).filter(Boolean))];
+  const optsP=`<option value="">Escolha o produto…</option><option value="__novo">➕ Produto novo</option>${ps.map(p=>`<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join('')}`;
+  const linha=()=>`<div class="card cmLinha" style="padding:10px;margin-bottom:8px"><div style="display:flex;gap:8px"><select class="cmProd" style="flex:1">${optsP}</select><button class="icon-btn cmDel" title="Remover" style="width:36px;height:42px">✕</button></div>
+    <div class="cmNovo" style="display:none;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"><input class="cmNome" placeholder="Nome do produto" style="grid-column:1/-1"><input class="cmCat" list="dlCatM" placeholder="Categoria"><input class="cmPreco" inputmode="decimal" placeholder="Preço de venda *"></div>
+    <div class="g2" style="margin-top:8px"><div><label class="lbl" style="margin-top:0">Quantidade (unidades)</label><input class="cmQtd" inputmode="decimal" placeholder="Ex.: 24"></div><div><label class="lbl" style="margin-top:0">Valor pago no total</label><input class="cmVal" inputmode="decimal" placeholder="0,00"></div></div>
+    <div class="cmInfo mute" style="font-size:12px;margin-top:6px"></div></div>`;
+  openModal(`<h3>Lançar compra sem XML</h3><p class="hint" style="margin:-6px 0 10px">Para nota em papel, cupom de mercado ou atacado. Digite a <b>quantidade em unidades</b> (ex.: 2 fardos de 12 = 24) e <b>quanto pagou</b> por aquele item no total.</p>
+  <div class="g2"><div><label class="lbl">Onde comprou / fornecedor</label><input id="cmForn" list="dlForn" placeholder="Ex.: Atacadão" autofocus></div><div><label class="lbl">Data da compra</label><input id="cmData" type="date" value="${hojeStr()}"></div></div>
+  <datalist id="dlForn">${[...new Set(st.notas.map(n=>n.fornecedor).filter(Boolean))].map(f=>`<option value="${esc(f)}">`).join('')}</datalist><datalist id="dlCatM">${cats.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+  <label class="lbl">Nº da nota <span style="font-weight:500">(opcional)</span></label><input id="cmNum" placeholder="Ex.: 001234">
+  <h4 style="margin-top:16px">Itens</h4><div id="cmItens">${linha()}</div><button class="btn" id="cmAdd" style="width:100%">+ Adicionar item</button>
+  <div class="pay-total"><span>Total da compra</span><b id="cmTot">R$ 0,00</b></div>
+  <label class="lbl" style="display:flex;gap:10px;align-items:center;cursor:pointer"><input id="cmCusto" type="checkbox" style="width:auto" checked> Atualizar o custo dos produtos</label>
+  <label class="lbl">Pagamento</label><select id="cmPag"><option value="pago">Já paguei</option><option value="apagar">Vou pagar depois (vai para Contas)</option><option value="nao">Não registrar em Contas</option></select>
+  <div id="cmPagoBox" class="g2" style="margin-top:8px"><div><label class="lbl" style="margin-top:0">Forma</label><select id="cmForma">${Object.entries(FORMAS_PAG).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div><div id="cmVencBox" style="display:none"><label class="lbl" style="margin-top:0">Vencimento</label><input id="cmVenc" type="date" value="${hojeStr()}"></div></div>
+  <div class="mbtns"><button class="btn primary big" id="cmOk">Lançar compra</button></div>`,s=>{
+    const box=$('#cmItens');
+    const recalc=()=>{let t=0;box.querySelectorAll('.cmLinha').forEach(l=>{const qn=pn(l.querySelector('.cmQtd').value),v=pm(l.querySelector('.cmVal').value);t+=v;
+      l.querySelector('.cmNovo').style.display=l.querySelector('.cmProd').value==='__novo'?'grid':'none';
+      l.querySelector('.cmInfo').textContent=qn&&v?`Custo por unidade: ${fm(Math.round(v/qn))}`:''});$('#cmTot').textContent=fm(t)};
+    const liga=l=>{l.querySelectorAll('input,select').forEach(e=>{e.oninput=recalc;e.onchange=recalc});l.querySelector('.cmDel').onclick=()=>{if(box.querySelectorAll('.cmLinha').length>1){l.remove();recalc()}}};
+    box.querySelectorAll('.cmLinha').forEach(liga);
+    $('#cmAdd').onclick=()=>{box.insertAdjacentHTML('beforeend',linha());liga(box.lastElementChild);box.lastElementChild.querySelector('.cmProd').focus()};
+    const pag=$('#cmPag');const updPag=()=>{$('#cmPagoBox').style.display=pag.value==='nao'?'none':'grid';$('#cmVencBox').style.display=pag.value==='apagar'?'':'none';$('#cmForma').parentElement.style.display=pag.value==='pago'?'':'none'};pag.onchange=updPag;updPag();
+    $('#cmOk').onclick=()=>lancarCompraManual(s)})}
+async function lancarCompraManual(s){
+  const forn=$('#cmForn').value.trim();if(!forn){toast('Informe onde comprou','warn');return}
+  const linhas=[...s.querySelectorAll('.cmLinha')].map(l=>({sel:l.querySelector('.cmProd').value,qtd:pn(l.querySelector('.cmQtd').value),valor:pm(l.querySelector('.cmVal').value),
+    nome:l.querySelector('.cmNome').value.trim(),cat:l.querySelector('.cmCat').value.trim(),preco:pm(l.querySelector('.cmPreco').value)})).filter(l=>l.sel||l.qtd||l.valor);
+  if(!linhas.length){toast('Adicione pelo menos um item','warn');return}
+  for(const l of linhas){if(!l.sel){toast('Escolha o produto de cada item','warn');return}if(!(l.qtd>0)){toast('Informe a quantidade de cada item','warn');return}
+    if(l.sel==='__novo'&&(!l.nome||!l.preco)){toast('Informe nome e preço de venda do produto novo','warn');return}}
+  const total=linhas.reduce((t,l)=>t+l.valor,0);const data=$('#cmData').value||hojeStr();const pag=$('#cmPag').value;const b=$('#cmOk');b.disabled=true;b.textContent='Lançando…';
+  try{const nid='n'+uid();for(const l of linhas){if(l.sel==='__novo'){l.pid='p'+uid();l.novo=true}else l.pid=l.sel}
+    await W(()=>S.set('notas_compra/'+nid,{chave:null,numero:$('#cmNum').value.trim()||null,serie:null,fornecedor:forn,cnpj:null,emissao:data,total,criadoEm:Date.now(),
+      itens:linhas.map(l=>({nome:l.novo?l.nome:(st.produtos.find(p=>p.id===l.pid)||{}).nome,qCom:l.qtd,uCom:'UN',vProd:l.valor,custoTotal:l.valor,pid:l.pid,fator:1,unidades:l.qtd}))}));
+    for(const l of linhas.filter(l=>l.novo))await W(()=>S.set('produtos/'+l.pid,{nome:l.nome,categoria:l.cat||'Outros',preco:l.preco,custo:l.valor?Math.round(l.valor/l.qtd):0,estoque:0,minimo:0,ativo:true}));
+    chk(await sb.rpc('baixar_estoque',{p_itens:linhas.map(l=>({pid:l.pid,qtd:l.qtd})),p_sinal:1}));
+    if($('#cmCusto').checked)for(const l of linhas.filter(l=>!l.novo&&l.valor))await W(()=>q('produtos/'+l.pid,()=>S.update('produtos/'+l.pid,{custo:Math.round(l.valor/l.qtd)})));
+    if(pag!=='nao'&&total){const pago=pag==='pago';const venc=pago?data:($('#cmVenc').value||hojeStr());const dt=ymdDate(data);dt.setHours(12,0,0,0);
+      await W(()=>S.set('despesas/c'+nid,{descricao:`Compra · ${forn}${$('#cmNum').value.trim()?' · NF '+$('#cmNum').value.trim():''}`,categoria:'Fornecedor',valor:total,vencimento:venc,pago,pagoEm:pago?dt.getTime():null,forma:pago?$('#cmForma').value:null,notaId:nid,criadoEm:Date.now()}))}
+    depoisDeGravar();closeModal();st.compras.vend=null;toast(`Compra lançada: ${linhas.length} ite${linhas.length>1?'ns':'m'} · ${fm(total)}`)}
+  catch(e){console.error(e);if(b){b.disabled=false;b.textContent='Lançar compra'}}}
+
+function modalVerNota(id){const n=st.notas.find(x=>x.id===id);if(!n)return;
+  openModal(`<h3>NF ${esc(n.numero||'')} · ${esc(n.fornecedor||'')}</h3><p class="mute" style="font-size:13px;margin-bottom:10px">${ddmm(n.emissao)} · CNPJ ${esc(n.cnpj||'—')} · total <b style="color:var(--text)">${fm(n.total)}</b>${n.chave?`<br><span style="font-size:11px;word-break:break-all">Chave: ${esc(n.chave)}</span>`:''}</p>
+  <div class="tablewrap"><table><thead><tr><th>Item</th><th class="r">Entrou</th><th class="r">Custo/un</th></tr></thead><tbody>${(n.itens||[]).map(i=>{const p=i.pid&&st.produtos.find(x=>x.id===i.pid);return `<tr><td>${esc(i.nome)}${p?`<br><span class="mute" style="font-size:11px">→ ${esc(p.nome)}</span>`:'<br><span class="mute" style="font-size:11px">não lançado</span>'}</td><td class="r">${i.unidades?String(+Number(i.unidades).toFixed(3)).replace('.',','):'—'}</td><td class="r">${i.unidades?fm(Math.round(i.custoTotal/i.unidades)):'—'}</td></tr>`}).join('')}</tbody></table></div>
+  <p class="hint">Para corrigir uma quantidade, use "+ Entrada" no produto ou edite o estoque.</p>`)}
 
 /* ============ exportação Excel (.xlsx) ============ */
 const XL=(()=>{
@@ -637,6 +887,8 @@ async function gerarRelatorio(tipo,ini,fim,rotulo,arquivo){
     const movs=caixas.flatMap(c=>c.movs||[]).filter(m=>m.ts>=ini&&m.ts<=fim);
     const sang=movs.filter(m=>m.tipo==='sangria').reduce((s,m)=>s+m.valor,0),sup=movs.filter(m=>m.tipo==='suprimento').reduce((s,m)=>s+m.valor,0);
     const FK=Object.keys(FORMAS);const sheets=[];
+    const iniS=dayKey(ini),fimS=dayKey(fimEf);const despP=despesasPeriodo(ini,fim),totDesp=despP.reduce((s,d)=>s+d.valor,0);
+    const despAb=st.despesas.filter(d=>!d.pago&&d.vencimento>=iniS&&d.vencimento<=fimS);const notasP=st.notas.filter(n=>n.emissao>=iniS&&n.emissao<=fimS).sort((a,b)=>String(a.emissao).localeCompare(String(b.emissao)));
     sheets.push({name:'Resumo',cols:[46,28],rows:[
       [{v:`Relatório ${rotulo} · ${nome}`,s:5}],['Período',`${df(ini)} a ${df(fimEf)}`],['Gerado em',new Date().toLocaleString('pt-BR')],[],
       [XH('Vendas'),XH('')],['Faturamento bruto (antes dos descontos)',XM(bruto)],['Descontos concedidos',XM(desc)],[XB('Faturamento líquido'),XMB(a.total)],
@@ -644,7 +896,8 @@ async function gerarRelatorio(tipo,ini,fim,rotulo,arquivo){
       [XH('Recebimentos por forma de pagamento'),XH('')],...FK.map(k=>[FORMAS[k],XM(a.f[k])]),[XB('Total recebido'),XMB(FK.reduce((s,k)=>s+(a.f[k]||0),0))],[],
       [XH('Resultado (estimativa)'),XH('')],['Custo das mercadorias vendidas',XM(a.custo)],[XB('Lucro bruto estimado'),XMB(a.lucro)],
       ...(a.semCusto?[['Obs.: produtos sem custo cadastrado entram com custo zero.']]:[]),[],
-      [XH('Movimentação de caixa'),XH('')],['Caixas abertos no período',caixas.length],['Sangrias (retiradas)',XM(sang)],['Suprimentos (entradas)',XM(sup)]]});
+      [XH('Movimentação de caixa'),XH('')],['Caixas abertos no período',caixas.length],['Sangrias (retiradas)',XM(sang)],['Suprimentos (entradas)',XM(sup)],[],
+      [XH('Despesas e resultado'),XH('')],['Despesas pagas no período',XM(totDesp)],[XB('Resultado (lucro bruto − despesas)'),XMB(a.lucro-totDesp)],['Compras (notas lançadas no período)',XM(notasP.reduce((s,n)=>s+(n.total||0),0))]]});
     const linhaGrupo=(rot,vs)=>{const f={dinheiro:0,pix:0,debito:0,credito:0};vs.forEach(v=>{const p=pf(v);FK.forEach(k=>f[k]+=p[k])});return{rot,n:vs.length,f,d:vs.reduce((s,v)=>s+(v.desconto||0),0),t:vs.reduce((s,v)=>s+v.total,0)}};
     const tabela=(nomeAba,cab1,grupos,extra)=>{const tot=linhaGrupo('',ok);
       sheets.push({name:nomeAba,freeze:1,cols:[18,...(extra?[14]:[]),9,14,14,14,14,13,16],rows:[[XH(cab1),...(extra?[XH('Dia')]:[]),XH('Vendas'),...FK.map(k=>XH(FORMAS[k])),XH('Descontos'),XH('Total')],
@@ -666,6 +919,12 @@ async function gerarRelatorio(tipo,ini,fim,rotulo,arquivo){
     if(movs.length)sheets.push({name:'Sangrias e suprimentos',freeze:1,cols:[12,7,14,40,13],rows:[[XH('Data'),XH('Hora'),XH('Tipo'),XH('Motivo'),XH('Valor')],...movs.sort((a,b)=>a.ts-b.ts).map(m=>[df(m.ts),hm(m.ts),m.tipo==='sangria'?'Sangria':'Suprimento',m.motivo||'',XM(m.valor)])]});
     const pgs=porGarcom(ok);if(pgs.some(g=>g.id)){let ps={};if(U){try{ps=await U.profiles(pgs.filter(g=>g.id).map(g=>g.id))}catch(e){}}
       sheets.push({name:'Por garçom',freeze:1,cols:[30,12,16],rows:[[XH('Garçom'),XH('Comandas'),XH('Total vendido')],...pgs.map(g=>[g.id?((st.garcons.find(x=>x.id===g.id)||{}).nome||(g.id==='dono'?'Dono':'')||(ps[g.id]&&ps[g.id].name)||(g.id==='local'?'Você':'Garçom')):'Balcão / caixa',g.n,XM(g.t)])]})}
+    const listaD=[...despP,...despAb].sort((a,b)=>String(a.vencimento).localeCompare(String(b.vencimento)));
+    if(listaD.length)sheets.push({name:'Despesas',freeze:1,cols:[12,12,36,16,14,13,12],rows:[[XH('Vencimento'),XH('Pagamento'),XH('Descrição'),XH('Categoria'),XH('Forma'),XH('Valor'),XH('Situação')],
+      ...listaD.map(d=>[ddmm(d.vencimento),d.pago&&d.pagoEm?new Date(d.pagoEm).toLocaleDateString('pt-BR'):'',d.descricao,d.categoria||'Outros',d.forma?(FORMAS_PAG[d.forma]||d.forma):'',XM(d.valor),d.pago?'Paga':(diasAte(d.vencimento)<0?'Vencida':'A pagar')]),
+      [XB('TOTAL PAGO'),'','','','',XMB(totDesp),'']]});
+    if(notasP.length)sheets.push({name:'Notas de compra',freeze:1,cols:[12,10,32,18,8,14,48],rows:[[XH('Emissão'),XH('NF'),XH('Fornecedor'),XH('CNPJ'),XH('Itens'),XH('Total'),XH('Chave de acesso')],
+      ...notasP.map(n=>[ddmm(n.emissao),n.numero||'',n.fornecedor||'',n.cnpj||'',(n.itens||[]).length,XM(n.total),n.chave||'']),[XB('TOTAL'),'','','','',XMB(notasP.reduce((s,n)=>s+(n.total||0),0)),'']]});
     const ep=st.produtos.filter(p=>p.ativo!==false);
     sheets.push({name:'Estoque atual',freeze:2,cols:[34,16,11,14,16],rows:[[XB(`Posição do estoque em ${new Date().toLocaleString('pt-BR')}`)],[XH('Produto'),XH('Categoria'),XH('Quantidade'),XH('Custo unitário'),XH('Valor em estoque')],
       ...ep.map(p=>{const e=Number(p.estoque)||0;return[p.nome,p.categoria||'Outros',e,XM(p.custo),XM((Number(p.custo)||0)*Math.max(0,e))]}),[XB('TOTAL'),'',XB(ep.reduce((s,p)=>s+Math.max(0,Number(p.estoque)||0),0)),'',XMB(ep.reduce((s,p)=>s+(Number(p.custo)||0)*Math.max(0,Number(p.estoque)||0),0))]]});
@@ -791,10 +1050,11 @@ function modalProduto(id){const p=id?st.produtos.find(x=>x.id===id):{};if(!p)ret
   <label class="lbl">Categoria</label><input id="fCat" list="dlCat" value="${esc(p.categoria||'')}" placeholder="Ex.: Bebidas"><datalist id="dlCat">${cats.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
   <div class="g2"><div><label class="lbl">Preço de venda *</label><input id="fPreco" inputmode="decimal" value="${fmv(p.preco)}" placeholder="0,00"></div><div><label class="lbl">Custo (compra)</label><input id="fCusto" inputmode="decimal" value="${fmv(p.custo)}" placeholder="0,00"></div></div>
   <div class="g2"><div><label class="lbl">Estoque atual</label><input id="fEst" inputmode="decimal" value="${p.estoque??''}" placeholder="0"></div><div><label class="lbl">Estoque mínimo</label><input id="fMin" inputmode="decimal" value="${p.minimo??''}" placeholder="0"></div></div>
-  <p class="hint">Quando o estoque chegar no mínimo, o produto aparece na lista de compras. O custo serve para calcular o lucro.</p>
+  <label class="lbl">Código de barras <span style="font-weight:500">(opcional)</span></label><input id="fEan" inputmode="numeric" value="${esc(p.codigoBarras||'')}" placeholder="Ex.: 7894900011517">
+  <p class="hint">Quando o estoque chegar no mínimo, o produto aparece na lista de compras. O custo serve para calcular o lucro. O código de barras ajuda a reconhecer o produto nas notas de compra e na busca.</p>
   <div class="mbtns">${id?`<button class="btn ghost danger" id="fDel">Excluir</button>`:''}<button class="btn primary" id="fSave">Salvar</button></div>`,()=>{
   $('#fSave').onclick=async()=>{const nome=$('#fNome').value.trim(),preco=pm($('#fPreco').value);if(!nome){toast('Informe o nome','warn');return}if(!preco){toast('Informe o preço de venda','warn');return}
-    const data={nome,categoria:$('#fCat').value.trim()||'Outros',preco,custo:pm($('#fCusto').value),estoque:pn($('#fEst').value),minimo:pn($('#fMin').value),ativo:true};
+    const data={nome,categoria:$('#fCat').value.trim()||'Outros',preco,custo:pm($('#fCusto').value),estoque:pn($('#fEst').value),minimo:pn($('#fMin').value),ativo:true,codigoBarras:$('#fEan').value.replace(/\D/g,'')||null};
     const pid=id||uid();try{await W(()=>q('produtos/'+pid,()=>S.set('produtos/'+pid,data)));closeModal();toast(id?'Produto atualizado':'Produto cadastrado');st.compras.vend=null}catch(e){}};
   if(id){let arm=false;$('#fDel').onclick=async()=>{if(!arm){arm=true;$('#fDel').textContent='Toque de novo p/ excluir';return}try{await W(()=>S.del('produtos/'+id));closeModal();toast('Produto excluído')}catch(e){}}}})}
 function modalEntrada(id){const p=st.produtos.find(x=>x.id===id);if(!p)return;
@@ -808,7 +1068,7 @@ function modalEscolherComanda(pid){openModal(`<h3>Em qual comanda?</h3><div clas
   s.querySelectorAll('[data-esc]').forEach(b=>b.onclick=()=>{st.ticket.comandaId=b.dataset.esc;closeModal();if(pid)addProduto(pid);else render()})})}
 function modalAjustes(){if(!isDono())return;
   openModal(`<h3>Ajustes</h3><label class="lbl">Nome da loja</label><input id="sNome" value="${esc(st.cfg.nome||'')}">
-  <button class="btn" id="sEq" style="width:100%;margin-top:14px">👥 Equipe: cadastrar e remover garçons</button>
+  <button class="btn" id="sEq" style="width:100%;margin-top:14px">👥 Equipe: cadastrar e remover garçons</button>${btnInstalar()}
   <p class="hint">${st.mode==='nuvem'?'☁ Dados salvos na nuvem: aparecem em qualquer aparelho com acesso a este link.':'Modo demonstração: dados salvos só neste navegador.'}</p>
   <div class="mbtns"><button class="btn primary" id="sOk">Salvar</button></div>`,()=>{$('#sEq').onclick=()=>modalEquipe();$('#sOk').onclick=async()=>{st.cfg.nome=$('#sNome').value.trim()||NOME_PADRAO;try{await W(()=>S.set('config/loja',cfgPlain()));closeModal();render()}catch(e){}}})}
 
@@ -832,6 +1092,9 @@ const ACT={
   abrirCaixa(){modalAbrirCaixa()},mov(id){modalMov(id)},fecharCaixa(){modalFechar()},
   cancelarVenda(id){const v=st.vendas.find(x=>x.id===id);if(!v)return;confirmar('Cancelar venda?',`Venda de ${fm(v.total)} às ${hm(v.ts)}. Os produtos voltam para o estoque e o valor sai do caixa.`,'Cancelar venda',async()=>{
     await W(()=>S.update(`caixas/${st.cfg.caixaAberto}/vendas/${id}`,{cancelada:true,canceladaEm:Date.now()}));await baixaEstoque(v.itens||[],+1);toast('Venda cancelada')})},
+  novaConta(){modalConta()},editConta(id){modalConta(id)},pagarConta(id){modalPagarConta(id)},
+  instalarApp(){instalarApp()},
+  contasView(id,el){st.contasView=el.dataset.v;render()},verNota(id){modalVerNota(id)},compraManual(){modalCompraManual()},
   novoProduto(){modalProduto()},editProduto(id){modalProduto(id)},entrada(id){modalEntrada(id)},
   estView(id,el){st.estView=el.dataset.v;if(st.estView==='compras')loadCompras();render()},
   estLow(id,el){st.estLow=el.dataset.v==='1';render()},
@@ -848,8 +1111,9 @@ const ACT={
 document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el)return;const fn=ACT[el.dataset.act];if(fn){e.preventDefault();fn(el.dataset.id,el,e)}});
 document.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset.bind;if(!k)return;const v=e.target.value;
   if(k==='relIni')st.rel.ini=v;else if(k==='relFim')st.rel.fim=v;else{st[k]=v;render()}});
-document.addEventListener('change',e=>{if(e.target.dataset&&e.target.dataset.change==='destino'){const v=e.target.value;
+document.addEventListener('change',e=>{if(e.target.dataset&&e.target.dataset.file==='xmlNota'){const f=e.target.files&&e.target.files[0];e.target.value='';importarXml(f);return}if(e.target.dataset&&e.target.dataset.change==='destino'){const v=e.target.value;
   if(v==='__nova'){render();modalNovaComanda()}else{st.ticket.comandaId=v||null;render()}}});
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(e=>console.warn('sw',e));
 boot();
 </script>
 </body>
